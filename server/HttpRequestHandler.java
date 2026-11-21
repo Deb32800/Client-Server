@@ -6,8 +6,8 @@ import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.HashMap;
 import java.util.Map;
@@ -16,21 +16,22 @@ import java.util.Map;
  * Handles one HTTP request on one client connection, then closes the connection.
  *
  * A3: parses the request line, headers and body.
- * A4: performs GET / POST / PUT / DELETE on files under server_data/.
+ * A4: performs GET / POST / PUT / DELETE on files under the storage directory (server_data/).
  *
- * Used by HttpServer:  new Thread(new HttpRequestHandler(clientSocket)).start();
+ * Used by HttpServer:  new Thread(new HttpRequestHandler(clientSocket, dataDirectory)).start();
  */
 public class HttpRequestHandler implements Runnable {
-
-    private static final Path ROOT = Paths.get("server_data").toAbsolutePath().normalize();
 
     // Shared by all handler threads so that only one thread changes the files at a time.
     private static final Object STORAGE_LOCK = new Object();
 
     private final Socket socket;
+    private final Path root; // storage directory, e.g. server_data/
 
-    public HttpRequestHandler(Socket socket) {
+    public HttpRequestHandler(Socket socket, Path root) {
         this.socket = socket;
+        // Absolute and normalized, so the "stay inside root" check in resolvePath() works.
+        this.root = root.toAbsolutePath().normalize();
     }
 
     @Override
@@ -159,8 +160,13 @@ public class HttpRequestHandler implements Runnable {
         if (!path.startsWith("/")) {
             throw new BadRequestException();
         }
-        Path file = ROOT.resolve(path.substring(1)).normalize(); // normalize() removes ".."
-        if (!file.startsWith(ROOT) || file.equals(ROOT)) {
+        Path file;
+        try {
+            file = root.resolve(path.substring(1)).normalize(); // normalize() removes ".."
+        } catch (InvalidPathException e) {
+            throw new BadRequestException(); // not a valid file name, e.g. "*" or "?" on Windows
+        }
+        if (!file.startsWith(root) || file.equals(root)) {
             throw new BadRequestException();
         }
         return file;
