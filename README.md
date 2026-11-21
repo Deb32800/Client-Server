@@ -45,11 +45,17 @@ The request path maps to a file in the data directory: `/users/alice.json` is `s
 | DELETE, file exists | `204 No Content`; file deleted |
 | GET / PUT / DELETE, file missing | `404 Not Found` |
 | Any other method | `405 Method Not Allowed` (with an `Allow` header) |
-| Malformed request, invalid `Content-Length`, body over 10 MB, path outside the data directory, a directory as target, or a parent path that is a file | `400 Bad Request` |
+| Malformed request, invalid `Content-Length`, body over 10 MB, path outside the data directory, a directory as target (including a path ending in `/`), or a parent path that is a file | `400 Bad Request` |
 | No data from the client for 10 seconds | `408 Request Timeout` |
 | Unexpected error | `500 Internal Server Error` |
 
 Every response has `Content-Length` (`0` when there is no body) and `Connection: close`. Each accepted connection is handled in a new thread, and file operations are synchronized on one shared lock, so concurrent clients cannot corrupt the storage.
+
+The server prints one line per request with the name of the thread that handled it:
+
+```
+[http-client-3] POST /users/alice.json HTTP/1.1 -> 201 Created
+```
 
 ## Client
 

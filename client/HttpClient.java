@@ -15,7 +15,10 @@ public class HttpClient {
         try {
             port = Integer.parseInt(args[1]);
         } catch (NumberFormatException e) {
-            System.out.println("Invalid port: " + args[1]);
+            port = -1;
+        }
+        if (port < 1 || port > 65535) {
+            System.out.println("Invalid port: " + args[1] + " (must be 1-65535)");
             return;
         }
 

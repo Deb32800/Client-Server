@@ -63,8 +63,8 @@ public class HttpServer {
                         clientSocket.close();
                     } catch (IOException ignored) {
                     }
+                    // Keep accepting other clients even if this one could not be handled.
                     System.err.println("Could not start client handler: " + e.getMessage());
-                    if (e instanceof Error) throw (Error) e;
                 }
             }
         } catch (IOException e) {

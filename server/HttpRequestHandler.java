@@ -35,6 +35,7 @@ public class HttpRequestHandler implements Runnable {
 
     private final Socket socket;
     private final Path root; // storage directory, e.g. server_data/
+    private String firstLine; // the request line, shown in the server log
 
     public HttpRequestHandler(Socket socket, Path root) {
         this.socket = socket;
@@ -58,7 +59,7 @@ public class HttpRequestHandler implements Runnable {
                 send(out, 500, "Internal Server Error", null, null);
             }
         } catch (IOException e) {
-            System.out.println("Connection error: " + e.getMessage());
+            System.out.println("[" + Thread.currentThread().getName() + "] connection error: " + e.getMessage());
         }
     }
 
@@ -67,6 +68,7 @@ public class HttpRequestHandler implements Runnable {
     private void handleRequest(InputStream in, OutputStream out) throws IOException {
         // Request line: METHOD /path HTTP/1.1
         String requestLine = readLine(in);
+        firstLine = requestLine;
         if (requestLine == null) {
             throw new BadRequestException();
         }
@@ -171,6 +173,9 @@ public class HttpRequestHandler implements Runnable {
         if (!path.startsWith("/")) {
             throw new BadRequestException();
         }
+        if (path.endsWith("/")) {
+            throw new BadRequestException(); // a path ending in "/" names a directory, not a file
+        }
         Path file;
         try {
             file = root.resolve(path.substring(1)).normalize(); // normalize() removes ".."
@@ -249,6 +254,10 @@ public class HttpRequestHandler implements Runnable {
         out.write(head.getBytes(StandardCharsets.UTF_8));
         out.write(body);
         out.flush();
+
+        // One line per request, e.g. "[http-client-3] POST /users/alice.json HTTP/1.1 -> 201 Created"
+        System.out.println("[" + Thread.currentThread().getName() + "] "
+                + (firstLine != null ? firstLine : "(no request line)") + " -> " + status + " " + reason);
     }
 
     /** Thrown for a malformed request, invalid length or invalid path; answered with 400. */
