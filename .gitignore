@@ -1,0 +1,12 @@
+# compiled classes
+build/
+*.class
+
+# files created by running the server
+server_data/
+
+# macOS
+.DS_Store
+
+# assignment handout
+network_systems_midterm_http*.pdf

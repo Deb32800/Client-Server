@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -25,6 +26,13 @@ public class HttpRequestHandler implements Runnable {
     // Shared by all handler threads so that only one thread changes the files at a time.
     private static final Object STORAGE_LOCK = new Object();
 
+    // A client that sends nothing for this long gets 408 instead of holding its thread forever.
+    private static final int READ_TIMEOUT_MS = 10_000;
+
+    // The body is kept in memory, so larger requests are rejected with 400 instead of
+    // making the thread run out of memory.
+    private static final int MAX_BODY_BYTES = 10 * 1024 * 1024; // 10 MB
+
     private final Socket socket;
     private final Path root; // storage directory, e.g. server_data/
 
@@ -37,12 +45,15 @@ public class HttpRequestHandler implements Runnable {
     @Override
     public void run() {
         try (Socket s = socket) {
+            s.setSoTimeout(READ_TIMEOUT_MS);
             InputStream in = new BufferedInputStream(s.getInputStream());
             OutputStream out = s.getOutputStream();
             try {
                 handleRequest(in, out);
             } catch (BadRequestException e) {
                 send(out, 400, "Bad Request", null, null);
+            } catch (SocketTimeoutException e) {
+                send(out, 408, "Request Timeout", null, null);
             } catch (Exception e) {
                 send(out, 500, "Internal Server Error", null, null);
             }
@@ -94,7 +105,7 @@ public class HttpRequestHandler implements Runnable {
             } catch (NumberFormatException e) {
                 throw new BadRequestException();
             }
-            if (length < 0) {
+            if (length < 0 || length > MAX_BODY_BYTES) {
                 throw new BadRequestException();
             }
         }
@@ -188,6 +199,12 @@ public class HttpRequestHandler implements Runnable {
             send(out, 409, "Conflict", null, null);
             return;
         }
+        // A parent that is an existing file (e.g. POST /notes.txt/a.json) is an invalid path.
+        for (Path dir = file.getParent(); !dir.equals(root); dir = dir.getParent()) {
+            if (Files.exists(dir) && !Files.isDirectory(dir)) {
+                throw new BadRequestException();
+            }
+        }
         Files.createDirectories(file.getParent()); // create missing parent directories
         Files.write(file, body, StandardOpenOption.CREATE_NEW);
         send(out, 201, "Created", null, null);
@@ -222,6 +239,9 @@ public class HttpRequestHandler implements Runnable {
         String head = "HTTP/1.1 " + status + " " + reason + "\r\n";
         if (contentType != null) {
             head += "Content-Type: " + contentType + "\r\n";
+        }
+        if (status == 405) {
+            head += "Allow: GET, POST, PUT, DELETE\r\n"; // required in a 405 response
         }
         head += "Content-Length: " + body.length + "\r\n"; // length in bytes, not characters
         head += "Connection: close\r\n";
