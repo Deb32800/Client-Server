@@ -40,11 +40,11 @@ java -cp build HttpClient <host> <port> <GET|POST|PUT|DELETE> <path> [content]
 ## Example
 
 ```bash
-java -cp build HttpClient localhost 8080 POST   /users/dev.json '{"name":"Dev","age":21}'   # 201 Created
-java -cp build HttpClient localhost 8080 GET    /users/dev.json                             # 200 OK
-java -cp build HttpClient localhost 8080 PUT    /users/dev.json '{"name":"Dev","age":22}'   # 204 No Content
-java -cp build HttpClient localhost 8080 DELETE /users/dev.json                             # 204 No Content
-java -cp build HttpClient localhost 8080 GET    /users/dev.json                             # 404 Not Found
+java -cp build HttpClient localhost 8080 POST   /users/dev.json '{"name":"Dev","age":21}'   
+java -cp build HttpClient localhost 8080 GET    /users/dev.json                             
+java -cp build HttpClient localhost 8080 PUT    /users/dev.json '{"name":"Dev","age":22}'   
+java -cp build HttpClient localhost 8080 DELETE /users/dev.json                             
+java -cp build HttpClient localhost 8080 GET    /users/dev.json                             
 ```
 
 The path `/users/dev.json` is the file `server_data/users/dev.json`.
