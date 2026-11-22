@@ -1,132 +1,69 @@
 # HTTP Client and Concurrent Server
 
-Network Systems midterm project: a basic HTTP/1.1 client and a concurrent HTTP server in Java, using only `Socket` and `ServerSocket`. The server stores resources as files and supports GET, POST, PUT and DELETE. Each TCP connection carries one request and one response.
-
-## Structure
+Network Systems midterm project (Group M6): a basic HTTP/1.1 client and a concurrent HTTP server in Java.
 
 ```
-README.md
-client/
-    HttpClient.java            client (Part B)
-server/
-    HttpServer.java            accepts connections, one thread per client (A1, A2)
-    HttpRequestHandler.java    parses one request, does the file operation, sends the response (A3-A5)
+client/HttpClient.java
+server/HttpServer.java
+server/HttpRequestHandler.java
+report.pdf
 ```
 
-## Compile
+Requires Java 11 or newer (tested with JDK 25).
 
-From the project folder:
+## 1. Compile
+
+From this folder:
 
 ```bash
 javac -d build server/*.java client/HttpClient.java
 ```
 
-The `.class` files go into `build/`, which is not committed.
-
-## Server
+## 2. Start the server
 
 ```bash
 java -cp build HttpServer [port] [data_directory]
 ```
 
-| Argument | Default | Meaning |
-|---|---|---|
-| `port` | `8080` | TCP port to listen on (1-65535) |
-| `data_directory` | `server_data` | Folder where resources are stored; created if missing |
+Both arguments are optional. The defaults are port `8080` and the folder `server_data`, which is created if it does not exist. For example, `java -cp build HttpServer 9090 mydata` uses port 9090 and the folder `mydata`.
 
-The request path maps to a file in the data directory: `/users/alice.json` is `server_data/users/alice.json`.
+Leave the server running and open a second terminal for the client. Stop the server with Ctrl+C.
 
-| Request | Result |
-|---|---|
-| GET, file exists | `200 OK` with the file content |
-| POST, file missing | `201 Created`; parent folders are created |
-| POST, file exists | `409 Conflict` |
-| PUT, file exists | `204 No Content`; content replaced |
-| DELETE, file exists | `204 No Content`; file deleted |
-| GET / PUT / DELETE, file missing | `404 Not Found` |
-| Any other method | `405 Method Not Allowed` (with an `Allow` header) |
-| Malformed request, invalid `Content-Length`, body over 10 MB, path outside the data directory, a directory as target (including a path ending in `/`), or a parent path that is a file | `400 Bad Request` |
-| No data from the client for 10 seconds | `408 Request Timeout` |
-| Unexpected error | `500 Internal Server Error` |
-
-Every response has `Content-Length` (`0` when there is no body) and `Connection: close`. Each accepted connection is handled in a new thread, and file operations are synchronized on one shared lock, so concurrent clients cannot corrupt the storage.
-
-The server prints one line per request with the name of the thread that handled it:
-
-```
-[http-client-3] POST /users/alice.json HTTP/1.1 -> 201 Created
-```
-
-## Client
+## 3. Run the client
 
 ```bash
 java -cp build HttpClient <host> <port> <GET|POST|PUT|DELETE> <path> [content]
 ```
 
-- `method` can be lowercase too; it is sent in uppercase.
-- `path` must start with `/`.
-- `content` is required for POST and PUT and not allowed for GET and DELETE. Put JSON in single quotes so the shell leaves it alone.
-
-The client builds the request itself (request line, `Host`, `Content-Type: application/json` and `Content-Length` in bytes when there is a body, `Connection: close`), then prints the status code and reason phrase, the headers, and the body read using `Content-Length`. Connection errors (unknown host, refused connection, 10-second read timeout) are reported with a one-line message.
+`content` is required for POST and PUT. Put JSON in single quotes.
 
 ## Example
 
-Terminal 1:
-
 ```bash
-java -cp build HttpServer
+java -cp build HttpClient localhost 8080 POST   /users/dev.json '{"name":"Dev","age":21}'   # 201 Created
+java -cp build HttpClient localhost 8080 GET    /users/dev.json                             # 200 OK
+java -cp build HttpClient localhost 8080 PUT    /users/dev.json '{"name":"Dev","age":22}'   # 204 No Content
+java -cp build HttpClient localhost 8080 DELETE /users/dev.json                             # 204 No Content
+java -cp build HttpClient localhost 8080 GET    /users/dev.json                             # 404 Not Found
 ```
 
-Terminal 2:
-
-```bash
-java -cp build HttpClient localhost 8080 POST   /users/alice.json '{"name":"Alice","age":21,"major":"CS"}'   # 201 Created
-java -cp build HttpClient localhost 8080 GET    /users/alice.json                                           # 200 OK + content
-java -cp build HttpClient localhost 8080 PUT    /users/alice.json '{"name":"Alice","age":22,"major":"CS"}'   # 204 No Content
-java -cp build HttpClient localhost 8080 POST   /users/alice.json '{"name":"Alice"}'                         # 409 Conflict
-java -cp build HttpClient localhost 8080 DELETE /users/alice.json                                           # 204 No Content
-java -cp build HttpClient localhost 8080 GET    /users/alice.json                                           # 404 Not Found
-```
-
-Example output:
-
-```
-Status: 200 OK
-Headers:
-  Content-Type: application/json
-  Content-Length: 38
-  Connection: close
-Body (38 bytes):
-{"name":"Alice","age":21,"major":"CS"}
-```
+The path `/users/dev.json` is the file `server_data/users/dev.json`.
 
 The server also works with curl:
 
 ```bash
-curl -v http://localhost:8080/users/alice.json
-curl -v -X POST -H 'Content-Type: application/json' --data-binary '{"name":"Alice","age":21}' http://localhost:8080/users/alice.json
-curl -v -X PUT  -H 'Content-Type: application/json' --data-binary '{"name":"Alice","age":22}' http://localhost:8080/users/alice.json
-curl -v -X DELETE http://localhost:8080/users/alice.json
-curl -v --path-as-is http://localhost:8080/../../secret.txt                                          # 400 Bad Request
+curl -i -X POST --data-binary '{"name":"Dev"}' http://localhost:8080/users/dev.json
+curl -i http://localhost:8080/users/dev.json
 ```
 
-Concurrency test, five clients at the same time, each creating a different file:
+Five clients at the same time (concurrency test):
 
 ```bash
-for i in 1 2 3 4 5; do
-  java -cp build HttpClient localhost 8080 POST /concurrent/client$i.json "{\"client\":$i}" | head -1 &
-done; wait
-ls server_data/concurrent
+for i in 1 2 3 4 5; do java -cp build HttpClient localhost 8080 POST /concurrent/client$i.json "{\"client\":$i}" | head -1 & done; wait
 ```
 
-## Environment
+The server prints one line per request, showing the thread that handled it.
 
-Tested on macOS 14.4 with Oracle JDK 25.0.1, curl 8.4.0 and Python 3.14.7.
+## Details
 
-## Known limitations
-
-- One global lock serialises all file operations, including GET.
-- Request bodies are limited to 10 MB because the whole body is kept in memory.
-- The 10-second timeout applies to each read, so a client that keeps sending a byte every few seconds can still hold its thread.
-- Paths are not percent-decoded (`/a%20b.json` is a file named `a%20b.json`), and query strings are not removed.
-- The client sends the path as typed, always uses `Content-Type: application/json`, and supports plain HTTP only.
+How the program works, the status codes and the test results are in `report.pdf`.
